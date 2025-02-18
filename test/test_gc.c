@@ -3,7 +3,7 @@
 #include <stdlib.h>
 #include "minunit.h"
 
-#include "../src/gc.c"
+#include "../src/voidvoxel/garbage_collection/gc.c"
 
 #define UNUSED(x) (void)(x)
 
@@ -160,7 +160,7 @@ static char* test_gc_allocation_map_cleanup()
      * chunk != NULL checks when iterating over the items in the hash map.
      */
     DTOR_COUNT = 0;
-    GarbageCollector gc_;
+    gc_GarbageCollector gc_;
     void *bos = __builtin_frame_address(0);
     gc_start_ext(&gc_, bos, 32, 32, 0.0, DBL_MAX, DBL_MAX);
 
@@ -189,7 +189,7 @@ static char* test_gc_allocation_map_cleanup()
 
 static char* test_gc_mark_stack()
 {
-    GarbageCollector gc_;
+    gc_GarbageCollector gc_;
     void *bos = __builtin_frame_address(0);
     gc_start_ext(&gc_, bos, 32, 32, 0.0, DBL_MAX, DBL_MAX);
     gc_pause(&gc_);
@@ -255,7 +255,7 @@ static char* test_gc_basic_alloc_free()
      * collected.
      */
     DTOR_COUNT = 0;
-    GarbageCollector gc_;
+    gc_GarbageCollector gc_;
     void *bos = __builtin_frame_address(0);
     gc_start_ext(&gc_, bos, 32, 32, 0.0, DBL_MAX, DBL_MAX);
 
@@ -306,7 +306,7 @@ static char* test_gc_basic_alloc_free()
     return NULL;
 }
 
-static void _create_static_allocs(GarbageCollector* gc,
+static void _create_static_allocs(gc_GarbageCollector* gc,
                                   size_t count,
                                   size_t size)
 {
@@ -319,7 +319,7 @@ static void _create_static_allocs(GarbageCollector* gc,
 static char* test_gc_static_allocation()
 {
     DTOR_COUNT = 0;
-    GarbageCollector gc_;
+    gc_GarbageCollector gc_;
     void *bos = __builtin_frame_address(0);
     gc_start(&gc_, bos);
     /* allocate a bunch of static vars in a deeper stack frame */
@@ -358,7 +358,7 @@ static char* test_gc_static_allocation()
 
 static char* test_gc_realloc()
 {
-    GarbageCollector gc_;
+    gc_GarbageCollector gc_;
     void *bos = __builtin_frame_address(0);
     gc_start(&gc_, bos);
 
@@ -399,7 +399,7 @@ static char* test_gc_realloc()
     return NULL;
 }
 
-static void _create_allocs(GarbageCollector* gc,
+static void _create_allocs(gc_GarbageCollector* gc,
                            size_t count,
                            size_t size)
 {
@@ -410,7 +410,7 @@ static void _create_allocs(GarbageCollector* gc,
 
 static char* test_gc_pause_resume()
 {
-    GarbageCollector gc_;
+    gc_GarbageCollector gc_;
     void *bos = __builtin_frame_address(0);
     gc_start(&gc_, bos);
     /* allocate a bunch of vars in a deeper stack frame */
@@ -431,7 +431,7 @@ static char* test_gc_pause_resume()
     return NULL;
 }
 
-static char* duplicate_string(GarbageCollector* gc, char* str)
+static char* duplicate_string(gc_GarbageCollector* gc, char* str)
 {
     char* copy = (char*) gc_strdup(gc, str);
     mu_assert(strncmp(str, copy, 16) == 0, "Strings should be equal");
@@ -440,7 +440,7 @@ static char* duplicate_string(GarbageCollector* gc, char* str)
 
 char* test_gc_strdup()
 {
-    GarbageCollector gc_;
+    gc_GarbageCollector gc_;
     void *bos = __builtin_frame_address(0);
     gc_start(&gc_, bos);
     char* str = "This is a string";
@@ -487,4 +487,3 @@ int main()
     printf("Tests run: %d\n", tests_run);
     return result != 0;
 }
-
