@@ -4,8 +4,6 @@
 #include <memory>
 #include <type_traits>
 
-auto x = std::make_shared<int>(1);
-
 #include "gc.hpp"
 
 #include "gc.c"
