@@ -26,7 +26,7 @@ namespace garbage_collection
     GarbageCollector::GarbageCollector(T *stack_bp, size_t initial_size, size_t min_size, double downsize_load_factor, double upsize_load_factor, double sweep_factor)
     {
         // Start the garbage collector.
-        gc_start_ext(self, stack_bp, initial_size, min_size, downsize_load_factor, upsize_load_factor, sweep_factor);
+        gc_start_ext(&this->_instance, stack_bp, initial_size, min_size, downsize_load_factor, upsize_load_factor, sweep_factor);
     }
 
     GarbageCollector::~GarbageCollector()
