@@ -466,8 +466,8 @@ void gc_free(gc_GarbageCollector *gc, void *ptr)
         if (alloc->dtor) {
             alloc->dtor(ptr);
         }
-        free(ptr);
         gc_allocation_map_remove(gc->allocs, ptr, true);
+        free(ptr);
     } else {
         LOG_WARNING("Ignoring request to free unknown pointer %p", (void *) ptr);
     }
