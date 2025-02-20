@@ -44,13 +44,13 @@ the *lowest* address on the stack.
 In other words, we expect `tos` < `bos`.
 
 ```c
-void gc_mark_stack(GarbageCollector* gc)
+void vgc_mark_stack(GarbageCollector* gc)
 {
     char dummy;
     void *tos = (void*) &dummy;
     void *bos = gc->bos;
-    for (char* p = (char*) tos; p <= (char*) bos - PTRSIZE; ++p) {
-        gc_mark_alloc(gc, *(void**)p);
+    for (char* p = (char*) tos; p <= (char*) bos - VGC_PTRSIZE; ++p) {
+        vgc_mark_alloc(gc, *(void**)p);
     }
 }
 ```
@@ -64,16 +64,16 @@ The code here is straightforward:
    if they contain references to known memory locations (`gc_mark_alloc()`
    queries the allocation map and recursively marks the allocations if the
    pointed-to memory allocations are a known key in the allocation map).
-   We do not iterate all the way to `bos` since the last `PTRSIZE-1` bytes
+   We do not iterate all the way to `bos` since the last `VGC_PTRSIZE-1` bytes
    are too short to hold valid pointer addresses.
 
-That leaves two questions: why are we iterating using a `char*` and 
+That leaves two questions: why are we iterating using a `char*` and
 what does `*(void**)p` do?
 
 ### Stack alignment and `char*`
 
 The reason why we are using a `char*` to iterate over the stack is because it
-allows us to access each byte on the stack. This is simply an (inefficient) 
+allows us to access each byte on the stack. This is simply an (inefficient)
 approach to
 not having to deal with stack alignment across different platforms and/or
 compilers.
@@ -111,13 +111,13 @@ over all known allocations and check if they contain a pointer to another
 (known) allocation:
 
 ```c
-void gc_mark_roots(GarbageCollector* gc)
+void vgc_mark_roots(GarbageCollector* gc)
 {
     for (size_t i = 0; i < gc->allocs->capacity; ++i) {
         Allocation* chunk = gc->allocs->allocs[i];
         while (chunk) {
-            if (chunk->tag & GC_TAG_ROOT) {
-                gc_mark_alloc(gc, chunk->ptr);
+            if (chunk->tag & VGC_TAG_ROOT) {
+                vgc_mark_alloc(gc, chunk->ptr);
             }
             chunk = chunk->next;
         }
@@ -132,16 +132,15 @@ that iterates over the memory content of an allocation, attempting to find any
 pointers located within:
 
 ```c
-void gc_mark_alloc(GarbageCollector* gc, void* ptr)
+void vgc_mark_alloc(GarbageCollector* gc, void* ptr)
 {
-    Allocation* alloc = gc_allocation_map_get(gc->allocs, ptr);
-    if (alloc && !(alloc->tag & GC_TAG_MARK)) {
-        alloc->tag |= GC_TAG_MARK;
+    Allocation* alloc = vgc_allocation_map_get(gc->allocs, ptr);
+    if (alloc && !(alloc->tag & VGC_TAG_MARK)) {
+        alloc->tag |= VGC_TAG_MARK;
         for (char* p = (char*) alloc->ptr;
-                p <= (char*) alloc->ptr + alloc->size - PTRSIZE;
+                p <= (char*) alloc->ptr + alloc->size - VGC_PTRSIZE;
                 ++p) {
-            gc_mark_alloc(gc, *(void**)p);
+            vgc_mark_alloc(gc, *(void**)p);
         }
     }
 }
-
