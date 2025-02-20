@@ -1,7 +1,7 @@
-![Build Status](https://github.com/mkirchner/gc/workflows/C/C++%20CI/badge.svg)
-[![Coverage Status](https://coveralls.io/repos/github/mkirchner/gc/badge.svg)](https://coveralls.io/github/mkirchner/gc)
+![Build Status](https://github.com/voidvoxel/vgc/workflows/C/C++%20CI/badge.svg)
+[![Coverage Status](https://coveralls.io/repos/github/voidvoxel/vgc/badge.svg)](https://coveralls.io/github/voidvoxel/vgc)
 
-# gc: mark & sweep garbage collection for C
+# VGC (Void Garbage Collector): mark & sweep garbage collection for C/C++
 
 `gc` is an implementation of a conservative, thread-local, mark-and-sweep
 garbage collector. The implementation provides a fully functional replacement
