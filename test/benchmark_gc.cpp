@@ -53,7 +53,7 @@ void vanilla_test()
 
 
 template <typename T, typename... Args>
-void gc_test(voidvoxel::garbage_collection::GarbageCollector *gc, Args ...args)
+void vgc_test(voidvoxel::garbage_collection::GarbageCollector *gc, Args ...args)
 {
     // Construct the object using placement new.
     T *instance = gc->make_managed<T>(args...);
@@ -72,7 +72,7 @@ int main(int argc, char const *argv[])
 #if defined(CONTROL_TEST)
         vanilla_test<Foo>();
 #else
-        gc_test<Foo>(&gc, 420);
+        vgc_test<Foo>(&gc, 420);
 #endif
     }
 
