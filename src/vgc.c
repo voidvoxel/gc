@@ -1,14 +1,33 @@
-#if !defined(VOIDVOXEL__GARBAGE_COLLECTION__GC_C)
-#define VOIDVOXEL__GARBAGE_COLLECTION__GC_C
+#if !defined(VGC__VGC_C)
+#define VGC__VGC_C
 
-#include "gc.h"
-#include "log.h"
+#include "vgc.h"
 
 #include <errno.h>
 #include <setjmp.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-//#include "primes.h"
+
+#define LOGLEVEL LOGLEVEL_DEBUG
+
+enum {
+    LOGLEVEL_CRITICAL,
+    LOGLEVEL_WARNING,
+    LOGLEVEL_INFO,
+    LOGLEVEL_DEBUG,
+    LOGLEVEL_NONE
+};
+
+static const char * log_level_strings [] = { "CRIT", "WARN", "INFO", "DEBG", "NONE" };
+
+#define log(level, fmt, ...) \
+    do { if (level <= LOGLEVEL) fprintf(stderr, "[%s] %s:%s:%d: " fmt "\n", log_level_strings[level], __func__, __FILE__, __LINE__, __VA_ARGS__); } while (0)
+
+#define LOG_CRITICAL(fmt, ...) log(LOGLEVEL_CRITICAL, fmt, __VA_ARGS__)
+#define LOG_WARNING(fmt, ...) log(LOGLEVEL_WARNING, fmt, __VA_ARGS__)
+#define LOG_INFO(fmt, ...) log(LOGLEVEL_INFO, fmt, __VA_ARGS__)
+#define LOG_DEBUG(fmt, ...) log(LOGLEVEL_DEBUG, fmt, __VA_ARGS__)
 
 /*
  * Set log level for this compilation unit. If set to LOGLEVEL_DEBUG,
@@ -20,7 +39,7 @@
 /*
  * The size of a pointer.
  */
-#define PTRSIZE sizeof(char*)
+#define VGC_PTRSIZE sizeof(char*)
 
 /*
  * Allocations can temporarily be tagged as "marked" an part of the
@@ -28,9 +47,9 @@
  * not automatically garbage collected. The latter allows the implementation
  * of global variables.
  */
-#define GC_TAG_NONE 0x0
-#define GC_TAG_ROOT 0x1
-#define GC_TAG_MARK 0x2
+#define VGC_TAG_NONE 0x0
+#define VGC_TAG_ROOT 0x1
+#define VGC_TAG_MARK 0x2
 
 /*
  * Support for windows c compiler is added by adding this macro.
@@ -46,11 +65,11 @@
  * Define a globally available GC object; this allows all code that
  * includes the gc.h header to access a global static garbage collector.
  * Convenient for single-threaded code, insufficient for multi-threaded
- * use cases. Use the GC_NO_GLOBAL_GC flag to toggle.
+ * use cases. Use the VGC_NO_GLOBAL_GC flag to toggle.
  */
-#ifndef GC_NO_GLOBAL_GC
+#ifndef VGC_NO_GLOBAL_GC
 /// @brief A global garbage collector for all single-threaded applications.
-gc_GarbageCollector GC_GLOBAL_INSTANCE;
+vgc_GC *VGC_GLOBAL_GC;
 #endif
 
 
@@ -101,12 +120,12 @@ typedef struct Allocation {
  *                 before freeing the memory pointed to by `ptr`.
  * @returns Pointer to the new allocation instance.
  */
-static Allocation *gc_allocation_new(void *ptr, size_t size, void (*dtor)(void *))
+static Allocation *vgc_allocation_new(void *ptr, size_t size, void (*dtor)(void *))
 {
     Allocation *a = (Allocation*) malloc(sizeof(Allocation));
     a->ptr = ptr;
     a->size = size;
-    a->tag = GC_TAG_NONE;
+    a->tag = VGC_TAG_NONE;
     a->dtor = dtor;
     a->next = NULL;
     return a;
@@ -120,7 +139,7 @@ static Allocation *gc_allocation_new(void *ptr, size_t size, void (*dtor)(void *
  *
  * @param a The allocation object to delete.
  */
-static void gc_allocation_delete(Allocation *a)
+static void vgc_allocation_delete(Allocation *a)
 {
     free(a);
 }
@@ -152,12 +171,12 @@ typedef struct AllocationMap {
  * @param am The allocationo map to calculate the load factor for.
  * @returns The load factor of the allocation map `am`.
  */
-static double gc_allocation_map_load_factor(AllocationMap * am)
+static double vgc_allocation_map_load_factor(AllocationMap * am)
 {
     return (double) am->size / (double) am->capacity;
 }
 
-static AllocationMap * gc_allocation_map_new(size_t min_capacity,
+static AllocationMap * vgc_allocation_map_new(size_t min_capacity,
         size_t capacity,
         double sweep_factor,
         double downsize_factor,
@@ -177,7 +196,7 @@ static AllocationMap * gc_allocation_map_new(size_t min_capacity,
     return am;
 }
 
-static void gc_allocation_map_delete(AllocationMap * am)
+static void vgc_allocation_map_delete(AllocationMap * am)
 {
     // Iterate over the map
     LOG_DEBUG("Deleting allocation map (cap=%lld, siz=%lld)",
@@ -190,7 +209,7 @@ static void gc_allocation_map_delete(AllocationMap * am)
                 tmp = alloc;
                 alloc = alloc->next;
                 // free the management structure
-                gc_allocation_delete(tmp);
+                vgc_allocation_delete(tmp);
             }
         }
     }
@@ -198,12 +217,12 @@ static void gc_allocation_map_delete(AllocationMap * am)
     free(am);
 }
 
-static size_t gc_hash(void *ptr)
+static size_t vgc_hash(void *ptr)
 {
     return ((uintptr_t)ptr) >> 3;
 }
 
-static void gc_allocation_map_resize(AllocationMap * am, size_t new_capacity)
+static void vgc_allocation_map_resize(AllocationMap * am, size_t new_capacity)
 {
     if (new_capacity <= am->min_capacity) {
         return;
@@ -218,7 +237,7 @@ static void gc_allocation_map_resize(AllocationMap * am, size_t new_capacity)
         Allocation *alloc = am->allocs[i];
         while (alloc) {
             Allocation *next_alloc = alloc->next;
-            size_t new_index = gc_hash(alloc->ptr) % new_capacity;
+            size_t new_index = vgc_hash(alloc->ptr) % new_capacity;
             alloc->next = resized_allocs[new_index];
             resized_allocs[new_index] = alloc;
             alloc = next_alloc;
@@ -230,27 +249,27 @@ static void gc_allocation_map_resize(AllocationMap * am, size_t new_capacity)
     am->sweep_limit = am->size + am->sweep_factor * (am->capacity - am->size);
 }
 
-static bool gc_allocation_map_resize_to_fit(AllocationMap * am)
+static bool vgc_allocation_map_resize_to_fit(AllocationMap * am)
 {
-    double load_factor = gc_allocation_map_load_factor(am);
+    double load_factor = vgc_allocation_map_load_factor(am);
     if (load_factor > am->upsize_factor) {
         LOG_DEBUG("Load factor %0.3g > %0.3g. Triggering upsize.",
                   load_factor, am->upsize_factor);
-        gc_allocation_map_resize(am, next_prime(am->capacity * 2));
+        vgc_allocation_map_resize(am, next_prime(am->capacity * 2));
         return true;
     }
     if (load_factor < am->downsize_factor) {
         LOG_DEBUG("Load factor %0.3g < %0.3g. Triggering downsize.",
                   load_factor, am->downsize_factor);
-        gc_allocation_map_resize(am, next_prime(am->capacity / 2));
+        vgc_allocation_map_resize(am, next_prime(am->capacity / 2));
         return true;
     }
     return false;
 }
 
-static Allocation *gc_allocation_map_get(AllocationMap * am, void *ptr)
+static Allocation *vgc_allocation_map_get(AllocationMap * am, void *ptr)
 {
-    size_t index = gc_hash(ptr) % am->capacity;
+    size_t index = vgc_hash(ptr) % am->capacity;
     Allocation *cur = am->allocs[index];
     while(cur) {
         if (cur->ptr == ptr) {
@@ -261,14 +280,14 @@ static Allocation *gc_allocation_map_get(AllocationMap * am, void *ptr)
     return NULL;
 }
 
-static Allocation *gc_allocation_map_put(AllocationMap * am,
+static Allocation *vgc_allocation_map_put(AllocationMap * am,
         void *ptr,
         size_t size,
         void (*dtor)(void *))
 {
-    size_t index = gc_hash(ptr) % am->capacity;
+    size_t index = vgc_hash(ptr) % am->capacity;
     LOG_DEBUG("PUT request for allocation ix=%lld", index);
-    Allocation *alloc = gc_allocation_new(ptr, size, dtor);
+    Allocation *alloc = vgc_allocation_new(ptr, size, dtor);
     Allocation *cur = am->allocs[index];
     Allocation *prev = NULL;
     /* Upsert if ptr is already known (e.g. dtor update). */
@@ -283,7 +302,7 @@ static Allocation *gc_allocation_map_put(AllocationMap * am,
                 // in the list
                 prev->next = alloc;
             }
-            gc_allocation_delete(cur);
+            vgc_allocation_delete(cur);
             LOG_DEBUG("AllocationMap Upsert at ix=%lld", index);
             return alloc;
 
@@ -298,19 +317,19 @@ static Allocation *gc_allocation_map_put(AllocationMap * am,
     am->size++;
     LOG_DEBUG("AllocationMap insert at ix=%lld", index);
     void *p = alloc->ptr;
-    if (gc_allocation_map_resize_to_fit(am)) {
-        alloc = gc_allocation_map_get(am, p);
+    if (vgc_allocation_map_resize_to_fit(am)) {
+        alloc = vgc_allocation_map_get(am, p);
     }
     return alloc;
 }
 
 
-static void gc_allocation_map_remove(AllocationMap * am,
+static void vgc_allocation_map_remove(AllocationMap * am,
                                      void *ptr,
                                      bool allow_resize)
 {
     // ignores unknown keys
-    size_t index = gc_hash(ptr) % am->capacity;
+    size_t index = vgc_hash(ptr) % am->capacity;
     Allocation *cur = am->allocs[index];
     Allocation *prev = NULL;
     Allocation *next;
@@ -325,7 +344,7 @@ static void gc_allocation_map_remove(AllocationMap * am,
                 // not the first item in the list
                 prev->next = cur->next;
             }
-            gc_allocation_delete(cur);
+            vgc_allocation_delete(cur);
             am->size--;
         } else {
             // move on
@@ -334,43 +353,43 @@ static void gc_allocation_map_remove(AllocationMap * am,
         cur = next;
     }
     if (allow_resize) {
-        gc_allocation_map_resize_to_fit(am);
+        vgc_allocation_map_resize_to_fit(am);
     }
 }
 
 
-static void *gc_mcalloc(size_t count, size_t size)
+static void *vgc_mcalloc(size_t count, size_t size)
 {
     if (!count) return malloc(size);
     return calloc(count, size);
 }
 
-static bool gc_needs_sweep(gc_GarbageCollector *gc)
+static bool vgc_needs_sweep(vgc_GC *gc)
 {
     return gc->allocs->size > gc->allocs->sweep_limit;
 }
 
-static void *gc_allocate(gc_GarbageCollector *gc, size_t count, size_t size, void(*dtor)(void *))
+static void *vgc_allocate(vgc_GC *gc, size_t count, size_t size, void(*dtor)(void *))
 {
     /* Allocation logic that generalizes over malloc/calloc. */
 
     /* Check if we reached the high-water mark and need to clean up */
-    if (gc_needs_sweep(gc) && !gc->paused) {
-        size_t freed_mem = gc_collect(gc);
+    if (vgc_needs_sweep(gc) && !gc->paused) {
+        size_t freed_mem = vgc_collect(gc);
         LOG_DEBUG("Garbage collection cleaned up %llu bytes.", freed_mem);
     }
     /* With cleanup out of the way, attempt to allocate memory */
-    void *ptr = gc_mcalloc(count, size);
+    void *ptr = vgc_mcalloc(count, size);
     size_t alloc_size = count ? count * size : size;
     /* If allocation fails, force an out-of-policy run to free some memory and try again. */
     if (!ptr && !gc->paused && (errno == EAGAIN || errno == ENOMEM)) {
-        gc_collect(gc);
-        ptr = gc_mcalloc(count, size);
+        vgc_collect(gc);
+        ptr = vgc_mcalloc(count, size);
     }
     /* Start managing the memory we received from the system */
     if (ptr) {
         LOG_DEBUG("Allocated %zu bytes at %p", alloc_size, (void *) ptr);
-        Allocation *alloc = gc_allocation_map_put(gc->allocs, ptr, alloc_size, dtor);
+        Allocation *alloc = vgc_allocation_map_put(gc->allocs, ptr, alloc_size, dtor);
         /* Deal with metadata allocation failure */
         if (alloc) {
             LOG_DEBUG("Managing %zu bytes at %p", alloc_size, (void *) alloc->ptr);
@@ -384,54 +403,54 @@ static void *gc_allocate(gc_GarbageCollector *gc, size_t count, size_t size, voi
     return ptr;
 }
 
-static void gc_make_root(gc_GarbageCollector *gc, void *ptr)
+static void vgc_make_root(vgc_GC *gc, void *ptr)
 {
-    Allocation *alloc = gc_allocation_map_get(gc->allocs, ptr);
+    Allocation *alloc = vgc_allocation_map_get(gc->allocs, ptr);
     if (alloc) {
-        alloc->tag |= GC_TAG_ROOT;
+        alloc->tag |= VGC_TAG_ROOT;
     }
 }
 
-void *gc_malloc(gc_GarbageCollector *gc, size_t size)
+void *vgc_malloc(vgc_GC *gc, size_t size)
 {
-    return gc_malloc_ext(gc, size, NULL);
+    return vgc_malloc_ext(gc, size, NULL);
 }
 
-void *gc_malloc_static(gc_GarbageCollector *gc, size_t size, void(*dtor)(void *))
+void *vgc_malloc_static(vgc_GC *gc, size_t size, void(*dtor)(void *))
 {
-    void *ptr = gc_malloc_ext(gc, size, dtor);
-    gc_make_root(gc, ptr);
+    void *ptr = vgc_malloc_ext(gc, size, dtor);
+    vgc_make_root(gc, ptr);
     return ptr;
 }
 
-void *gc_make_static(gc_GarbageCollector *gc, void *ptr)
+void *vgc_make_static(vgc_GC *gc, void *ptr)
 {
-    gc_make_root(gc, ptr);
+    vgc_make_root(gc, ptr);
     return ptr;
 }
 
-void *gc_malloc_ext(gc_GarbageCollector *gc, size_t size, void(*dtor)(void *))
+void *vgc_malloc_ext(vgc_GC *gc, size_t size, void(*dtor)(void *))
 {
-    return gc_allocate(gc, 0, size, dtor);
+    return vgc_allocate(gc, 0, size, dtor);
 }
 
 
-void *gc_calloc(gc_GarbageCollector *gc, size_t count, size_t size)
+void *vgc_calloc(vgc_GC *gc, size_t count, size_t size)
 {
-    return gc_calloc_ext(gc, count, size, NULL);
+    return vgc_calloc_ext(gc, count, size, NULL);
 }
 
 
-void *gc_calloc_ext(gc_GarbageCollector *gc, size_t count, size_t size,
+void *vgc_calloc_ext(vgc_GC *gc, size_t count, size_t size,
                     void(*dtor)(void *))
 {
-    return gc_allocate(gc, count, size, dtor);
+    return vgc_allocate(gc, count, size, dtor);
 }
 
 
-void *gc_realloc(gc_GarbageCollector *gc, void *p, size_t size)
+void *vgc_realloc(vgc_GC *gc, void *p, size_t size)
 {
-    Allocation *alloc = gc_allocation_map_get(gc->allocs, p);
+    Allocation *alloc = vgc_allocation_map_get(gc->allocs, p);
     if (p && !alloc) {
         // the user passed an unknown pointer
         errno = EINVAL;
@@ -444,7 +463,7 @@ void *gc_realloc(gc_GarbageCollector *gc, void *p, size_t size)
     }
     if (!p) {
         // allocation, not reallocation
-        Allocation *alloc = gc_allocation_map_put(gc->allocs, q, size, NULL);
+        Allocation *alloc = vgc_allocation_map_put(gc->allocs, q, size, NULL);
         return alloc->ptr;
     }
     if (p == q) {
@@ -453,32 +472,44 @@ void *gc_realloc(gc_GarbageCollector *gc, void *p, size_t size)
     } else {
         // successful reallocation w/ copy
         void (*dtor)(void *) = alloc->dtor;
-        gc_allocation_map_remove(gc->allocs, p, true);
-        gc_allocation_map_put(gc->allocs, q, size, dtor);
+#ifdef __clang__
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wuse-after-free"
+#elif __GNUC__
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wuse-after-free"
+#endif
+        vgc_allocation_map_remove(gc->allocs, p, true);
+#if __clang__
+#pragma clang diagnostic pop
+#elif __GNUC__
+#pragma GCC diagnostic pop
+#endif
+        vgc_allocation_map_put(gc->allocs, q, size, dtor);
     }
     return q;
 }
 
-void gc_free(gc_GarbageCollector *gc, void *ptr)
+void vgc_free(vgc_GC *gc, void *ptr)
 {
-    Allocation *alloc = gc_allocation_map_get(gc->allocs, ptr);
+    Allocation *alloc = vgc_allocation_map_get(gc->allocs, ptr);
     if (alloc) {
         if (alloc->dtor) {
             alloc->dtor(ptr);
         }
-        gc_allocation_map_remove(gc->allocs, ptr, true);
+        vgc_allocation_map_remove(gc->allocs, ptr, true);
         free(ptr);
     } else {
         LOG_WARNING("Ignoring request to free unknown pointer %p", (void *) ptr);
     }
 }
 
-void gc_start(gc_GarbageCollector *gc, void *stack_bp)
+void vgc_start(vgc_GC *gc, void *stack_bp)
 {
-    gc_start_ext(gc, stack_bp, 1024, 1024, 0.2, 0.8, 0.5);
+    vgc_start_ext(gc, stack_bp, 1024, 1024, 0.2, 0.8, 0.5);
 }
 
-void gc_start_ext(gc_GarbageCollector *gc,
+void vgc_start_ext(vgc_GC *gc,
                   void *stack_bp,
                   size_t initial_capacity,
                   size_t min_capacity,
@@ -492,83 +523,83 @@ void gc_start_ext(gc_GarbageCollector *gc,
     gc->paused = false;
     gc->stack_bp = stack_bp;
     initial_capacity = initial_capacity < min_capacity ? min_capacity : initial_capacity;
-    gc->allocs = gc_allocation_map_new(min_capacity, initial_capacity,
+    gc->allocs = vgc_allocation_map_new(min_capacity, initial_capacity,
                                        sweep_factor, downsize_limit, upsize_limit);
     LOG_DEBUG("Created new garbage collector (cap=%lld, siz=%lld).", gc->allocs->capacity,
               gc->allocs->size);
 }
 
-void gc_disable(gc_GarbageCollector *gc)
+void vgc_disable(vgc_GC *gc)
 {
     gc->paused = true;
 }
 
-void gc_enable(gc_GarbageCollector *gc)
+void vgc_enable(vgc_GC *gc)
 {
     gc->paused = false;
 }
 
-void gc_mark_alloc(gc_GarbageCollector *gc, void *ptr)
+void vgc_mark_alloc(vgc_GC *gc, void *ptr)
 {
-    Allocation *alloc = gc_allocation_map_get(gc->allocs, ptr);
+    Allocation *alloc = vgc_allocation_map_get(gc->allocs, ptr);
     /* Mark if alloc exists and is not tagged already, otherwise skip */
-    if (alloc && !(alloc->tag & GC_TAG_MARK)) {
+    if (alloc && !(alloc->tag & VGC_TAG_MARK)) {
         LOG_DEBUG("Marking allocation (ptr=%p)", ptr);
-        alloc->tag |= GC_TAG_MARK;
+        alloc->tag |= VGC_TAG_MARK;
         /* Iterate over allocation contents and mark them as well */
         LOG_DEBUG("Checking allocation (ptr=%p, size=%llu) contents", ptr, alloc->size);
         for (char *p = (char*) alloc->ptr;
-                p <= (char*) alloc->ptr + alloc->size - PTRSIZE;
+                p <= (char*) alloc->ptr + alloc->size - VGC_PTRSIZE;
                 ++p) {
             LOG_DEBUG("Checking allocation (ptr=%p) @%llu with value %p",
                       ptr, p-((char*) alloc->ptr), *(void **)p);
-            gc_mark_alloc(gc, *(void **)p);
+            vgc_mark_alloc(gc, *(void **)p);
         }
     }
 }
 
-void gc_mark_stack(gc_GarbageCollector *gc)
+void vgc_mark_stack(vgc_GC *gc)
 {
     LOG_DEBUG("Marking the stack (gc@%p) in increments of %lld", (void *) gc, sizeof(char));
     void *tos = __builtin_frame_address(0);
     void *stack_bp = gc->stack_bp;
     /* The stack grows towards smaller memory addresses, hence we scan tos->stack_bp.
      * Stop scanning once the distance between tos & stack_bp is too small to hold a valid pointer */
-    for (char *p = (char*) tos; p <= (char*) stack_bp - PTRSIZE; ++p) {
-        gc_mark_alloc(gc, *(void **)p);
+    for (char *p = (char*) tos; p <= (char*) stack_bp - VGC_PTRSIZE; ++p) {
+        vgc_mark_alloc(gc, *(void **)p);
     }
 }
 
-void gc_mark_roots(gc_GarbageCollector *gc)
+void vgc_mark_roots(vgc_GC *gc)
 {
     LOG_DEBUG("Marking roots%s", "");
     for (size_t i = 0; i < gc->allocs->capacity; ++i) {
         Allocation *chunk = gc->allocs->allocs[i];
         while (chunk) {
-            if (chunk->tag & GC_TAG_ROOT) {
+            if (chunk->tag & VGC_TAG_ROOT) {
                 LOG_DEBUG("Marking root @ %p", chunk->ptr);
-                gc_mark_alloc(gc, chunk->ptr);
+                vgc_mark_alloc(gc, chunk->ptr);
             }
             chunk = chunk->next;
         }
     }
 }
 
-void gc_mark(gc_GarbageCollector *gc)
+void vgc_mark(vgc_GC *gc)
 {
     /* Note: We only look at the stack and the heap, and ignore BSS. */
     LOG_DEBUG("Initiating GC mark (gc@%p)", (void *) gc);
     /* Scan the heap for roots */
-    gc_mark_roots(gc);
+    vgc_mark_roots(gc);
     /* Dump registers onto stack and scan the stack */
-    void (*volatile _mark_stack)(gc_GarbageCollector*) = gc_mark_stack;
+    void (*volatile _mark_stack)(vgc_GC*) = vgc_mark_stack;
     jmp_buf ctx;
     memset(&ctx, 0, sizeof(jmp_buf));
     setjmp(ctx);
     _mark_stack(gc);
 }
 
-size_t gc_sweep(gc_GarbageCollector *gc)
+size_t vgc_sweep(vgc_GC *gc)
 {
     LOG_DEBUG("Initiating GC sweep (gc@%p)", (void *) gc);
     size_t total = 0;
@@ -577,10 +608,10 @@ size_t gc_sweep(gc_GarbageCollector *gc)
         Allocation *next = NULL;
         /* Iterate over separate chaining */
         while (chunk) {
-            if (chunk->tag & GC_TAG_MARK) {
+            if (chunk->tag & VGC_TAG_MARK) {
                 LOG_DEBUG("Found used allocation %p (ptr=%p)", (void *) chunk, (void *) chunk->ptr);
                 /* unmark */
-                chunk->tag &= ~GC_TAG_MARK;
+                chunk->tag &= ~VGC_TAG_MARK;
                 chunk = chunk->next;
             } else {
                 LOG_DEBUG("Found unused allocation %p (%llu bytes @ ptr=%p)", (void *) chunk, chunk->size, (void *) chunk->ptr);
@@ -592,12 +623,12 @@ size_t gc_sweep(gc_GarbageCollector *gc)
                 free(chunk->ptr);
                 /* and remove it from the bookkeeping */
                 next = chunk->next;
-                gc_allocation_map_remove(gc->allocs, chunk->ptr, false);
+                vgc_allocation_map_remove(gc->allocs, chunk->ptr, false);
                 chunk = next;
             }
         }
     }
-    gc_allocation_map_resize_to_fit(gc->allocs);
+    vgc_allocation_map_resize_to_fit(gc->allocs);
     return total;
 }
 
@@ -606,44 +637,44 @@ size_t gc_sweep(gc_GarbageCollector *gc)
  *
  * @param gc A pointer to a garbage collector instance.
  */
-void gc_unroot_roots(gc_GarbageCollector *gc)
+void vgc_unroot_roots(vgc_GC *gc)
 {
     LOG_DEBUG("Unmarking roots%s", "");
     for (size_t i = 0; i < gc->allocs->capacity; ++i) {
         Allocation *chunk = gc->allocs->allocs[i];
         while (chunk) {
-            if (chunk->tag & GC_TAG_ROOT) {
-                chunk->tag &= ~GC_TAG_ROOT;
+            if (chunk->tag & VGC_TAG_ROOT) {
+                chunk->tag &= ~VGC_TAG_ROOT;
             }
             chunk = chunk->next;
         }
     }
 }
 
-size_t gc_stop(gc_GarbageCollector *gc)
+size_t vgc_stop(vgc_GC *gc)
 {
-    gc_unroot_roots(gc);
-    size_t collected = gc_sweep(gc);
-    gc_allocation_map_delete(gc->allocs);
+    vgc_unroot_roots(gc);
+    size_t collected = vgc_sweep(gc);
+    vgc_allocation_map_delete(gc->allocs);
     return collected;
 }
 
-size_t gc_collect(gc_GarbageCollector *gc)
+size_t vgc_collect(vgc_GC *gc)
 {
     LOG_DEBUG("Initiating GC run (gc@%p)", (void *) gc);
-    gc_mark(gc);
-    return gc_sweep(gc);
+    vgc_mark(gc);
+    return vgc_sweep(gc);
 }
 
-char *gc_strdup (gc_GarbageCollector *gc, const char *s)
+char *vgc_strdup (vgc_GC *gc, const char *str1)
 {
-    size_t len = strlen(s) + 1;
-    void *instance = gc_malloc(gc, len);
+    size_t len = strlen(str1) + 1;
+    void *instance = vgc_malloc(gc, len);
 
     if (instance == NULL) {
         return NULL;
     }
-    return (char*) memcpy(instance, s, len);
+    return (char*) memcpy(instance, str1, len);
 }
 
-#endif // VOIDVOXEL__GARBAGE_COLLECTION__GC_C
+#endif // VGC__VGC_C
