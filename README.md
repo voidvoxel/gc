@@ -62,8 +62,8 @@ Handbook][garbage_collection_handbook].
 
 ### Download, compile and test
 
-    $ git clone git@github.com:mkirchner/gc.git
-    $ cd gc
+    $ git clone git@github.com:voidvoxel/gc.git
+    $ cd gc/src/voidvoxel/garbage_collection
     
 To compile using the `clang` compiler:
 
