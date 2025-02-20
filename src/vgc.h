@@ -128,8 +128,12 @@ char * vgc_strdup(vgc_GC *gc, const char *str1);
 
 // Auxilary API macros (exclusive to C)
 #if !defined(__cplusplus)
+#if !defined(new)
 #define new(T)                  vgcx_new(T)
+#endif // new
+#if !defined(var)
 #define var(T, name)            vgcx_var(T, name)
-#endif
+#endif // var
+#endif // __cplusplus
 
 #endif // VGC__VGC_H
