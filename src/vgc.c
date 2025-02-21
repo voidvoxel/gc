@@ -120,7 +120,7 @@ typedef struct Allocation {
  *                 before freeing the memory pointed to by `ptr`.
  * @returns Pointer to the new allocation instance.
  */
-static Allocation *vgc_allocation_new(void *ptr, size_t size, void (*dtor)(void *))
+static Allocation * vgc_allocation_new(void *ptr, size_t size, void (*dtor)(void *))
 {
     Allocation *a = (Allocation*) malloc(sizeof(Allocation));
     a->ptr = ptr;
@@ -267,7 +267,7 @@ static bool vgc_allocation_map_resize_to_fit(AllocationMap * am)
     return false;
 }
 
-static Allocation *vgc_allocation_map_get(AllocationMap * am, void *ptr)
+static Allocation * vgc_allocation_map_get(AllocationMap * am, void *ptr)
 {
     size_t index = vgc_hash(ptr) % am->capacity;
     Allocation *cur = am->allocs[index];
@@ -280,7 +280,7 @@ static Allocation *vgc_allocation_map_get(AllocationMap * am, void *ptr)
     return NULL;
 }
 
-static Allocation *vgc_allocation_map_put(AllocationMap * am,
+static Allocation * vgc_allocation_map_put(AllocationMap * am,
         void *ptr,
         size_t size,
         void (*dtor)(void *))
@@ -358,7 +358,7 @@ static void vgc_allocation_map_remove(AllocationMap * am,
 }
 
 
-static void *vgc_mcalloc(size_t count, size_t size)
+static void * vgc_mcalloc(size_t count, size_t size)
 {
     if (!count) return malloc(size);
     return calloc(count, size);
@@ -369,7 +369,7 @@ static bool vgc_needs_sweep(vgc_GC *gc)
     return gc->allocs->size > gc->allocs->sweep_limit;
 }
 
-static void *vgc_allocate(vgc_GC *gc, size_t count, size_t size, void(*dtor)(void *))
+static void * vgc_allocate(vgc_GC *gc, size_t count, size_t size, void(*dtor)(void *))
 {
     /* Allocation logic that generalizes over malloc/calloc. */
 
@@ -411,44 +411,44 @@ static void vgc_make_root(vgc_GC *gc, void *ptr)
     }
 }
 
-void *vgc_malloc(vgc_GC *gc, size_t size)
+void * vgc_malloc(vgc_GC *gc, size_t size)
 {
     return vgc_malloc_ext(gc, size, NULL);
 }
 
-void *vgc_malloc_static(vgc_GC *gc, size_t size, void(*dtor)(void *))
+void * vgc_malloc_static(vgc_GC *gc, size_t size, void(*dtor)(void *))
 {
     void *ptr = vgc_malloc_ext(gc, size, dtor);
     vgc_make_root(gc, ptr);
     return ptr;
 }
 
-void *vgc_make_static(vgc_GC *gc, void *ptr)
+void * vgc_make_static(vgc_GC *gc, void *ptr)
 {
     vgc_make_root(gc, ptr);
     return ptr;
 }
 
-void *vgc_malloc_ext(vgc_GC *gc, size_t size, void(*dtor)(void *))
+void * vgc_malloc_ext(vgc_GC *gc, size_t size, void(*dtor)(void *))
 {
     return vgc_allocate(gc, 0, size, dtor);
 }
 
 
-void *vgc_calloc(vgc_GC *gc, size_t count, size_t size)
+void * vgc_calloc(vgc_GC *gc, size_t count, size_t size)
 {
     return vgc_calloc_ext(gc, count, size, NULL);
 }
 
 
-void *vgc_calloc_ext(vgc_GC *gc, size_t count, size_t size,
+void * vgc_calloc_ext(vgc_GC *gc, size_t count, size_t size,
                     void(*dtor)(void *))
 {
     return vgc_allocate(gc, count, size, dtor);
 }
 
 
-void *vgc_realloc(vgc_GC *gc, void *p, size_t size)
+void * vgc_realloc(vgc_GC *gc, void *p, size_t size)
 {
     Allocation *alloc = vgc_allocation_map_get(gc->allocs, p);
     if (p && !alloc) {
@@ -666,7 +666,7 @@ size_t vgc_collect(vgc_GC *gc)
     return vgc_sweep(gc);
 }
 
-char *vgc_strdup (vgc_GC *gc, const char *str1)
+char * vgc_strdup (vgc_GC *gc, const char *str1)
 {
     size_t len = strlen(str1) + 1;
     void *instance = vgc_malloc(gc, len);
