@@ -15,20 +15,21 @@ test:
 	$(BUILD_DIR)/test/test_gc
 
 coverage: test
-	$(MAKE) -C test coverage
+	$(MAKE) -C	test 	coverage
 
 coverage-html: coverage
-	$(MAKE) -C test coverage-html
+	$(MAKE) -C	test 	coverage-html
 
 .PHONY: clean
 clean:
-	$(MAKE) -C test clean
+	$(MAKE) -C	src		clean
+	$(MAKE) -C	test 	clean
 
 distclean: clean
-	$(MAKE) -C test distclean
+	$(MAKE) -C	test	distclean
 
 install:
-	$(MAKE) -C src install
+	$(MAKE) -C	src		install
 
 uninstall:
-	$(MAKE) -C src uninstall
+	$(MAKE) -C	src		uninstall
