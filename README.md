@@ -23,7 +23,8 @@ in C, entirely from scratch - and that also required garbage collection.
 This work would not have been possible without the ability to read the work of
 others, most notably the [Boehm GC][boehm], orangeduck's [tgc][tgc] (which also
 follows the ideals of being tiny and simple), [The Garbage Collection Handbook]
-[garbage_collection_handbook], and [mkirchner](https://github.com/mkirchner).
+[garbage_collection_handbook], [mkirchner](https://github.com/mkirchner), and
+[the many other contributors who worked on the original `gc`](https://github.com/mkirchner/gc/graphs/contributors).
 
 
 ## Table of contents
