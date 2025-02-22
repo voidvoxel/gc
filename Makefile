@@ -5,7 +5,11 @@ LDLIBS=
 RM=rm
 BUILD_DIR=./build
 
-.PHONY: test
+.PHONY: lib test
+
+lib:
+	$(MAKE) -C src
+
 test:
 	$(MAKE) -C $@
 	$(BUILD_DIR)/test/test_gc
@@ -22,4 +26,3 @@ clean:
 
 distclean: clean
 	$(MAKE) -C test distclean
-

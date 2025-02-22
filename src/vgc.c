@@ -11,18 +11,29 @@
 
 #define LOGLEVEL LOGLEVEL_DEBUG
 
-enum {
+typedef enum vgc_LogLevel {
     LOGLEVEL_CRITICAL,
     LOGLEVEL_WARNING,
     LOGLEVEL_INFO,
     LOGLEVEL_DEBUG,
     LOGLEVEL_NONE
-};
+} vgc_LogLevel;
+
+#if defined(DISABLE_LOGGING)
 
 static const char * log_level_strings [] = { "CRIT", "WARN", "INFO", "DEBG", "NONE" };
 
 #define log(level, fmt, ...) \
-    do { if (level <= LOGLEVEL) fprintf(stderr, "[%s] %s:%s:%d: " fmt "\n", log_level_strings[level], __func__, __FILE__, __LINE__, __VA_ARGS__); } while (0)
+    do { if (level <= LOGLEVEL) fprintf(stderr, "[%s] %s:%s:%llu: " fmt "\n", log_level_strings[level], __func__, __FILE__, (long long unsigned int) __LINE__, __VA_ARGS__); } while (0)
+
+#else
+
+static vgc_LogLevel log(vgc_LogLevel log_level, ...)
+{
+    return log_level;
+}
+
+#endif // DEBUG
 
 #define LOG_CRITICAL(fmt, ...) log(LOGLEVEL_CRITICAL, fmt, __VA_ARGS__)
 #define LOG_WARNING(fmt, ...) log(LOGLEVEL_WARNING, fmt, __VA_ARGS__)
@@ -163,14 +174,14 @@ static vgc_AllocationMap * vgc_allocation_map_new(size_t min_capacity,
     am->upsize_factor = upsize_factor;
     am->allocs = (vgc_Allocation**) calloc(am->capacity, sizeof(vgc_Allocation*));
     am->size = 0;
-    LOG_DEBUG("Created allocation map (cap=%lld, siz=%lld)", am->capacity, am->size);
+    LOG_DEBUG("Created allocation map (cap=%lld, siz=%lld)", (uint64_t) am->capacity, (uint64_t) am->size);
     return am;
 }
 
 static void vgc_allocation_map_delete(vgc_AllocationMap * am) {
     // Iterate over the map
     LOG_DEBUG("Deleting allocation map (cap=%lld, siz=%lld)",
-              am->capacity, am->size);
+              (uint64_t) am->capacity, (uint64_t) am->size);
     vgc_Allocation *alloc, *tmp;
     for (size_t i = 0; i < am->capacity; ++i) {
         if ((alloc = am->allocs[i])) {
@@ -198,7 +209,7 @@ static void vgc_allocation_map_resize(vgc_AllocationMap * am, size_t new_capacit
     // Replaces the existing items array in the hash table
     // with a resized one and pushes items into the new, correct buckets
     LOG_DEBUG("Resizing allocation map (cap=%lld, siz=%lld) -> (cap=%lld)",
-              am->capacity, am->size, new_capacity);
+              (uint64_t) am->capacity, (uint64_t) am->size, (uint64_t) new_capacity);
     vgc_Allocation **resized_allocs = (vgc_Allocation**) calloc(new_capacity, sizeof(vgc_Allocation*));
 
     for (size_t i = 0; i < am->capacity; ++i) {
@@ -251,7 +262,7 @@ static vgc_Allocation * vgc_allocation_map_put(vgc_AllocationMap * am,
         size_t size,
         vgc_Deconstructor dtor) {
     size_t index = vgc_hash(ptr) % am->capacity;
-    LOG_DEBUG("PUT request for allocation ix=%lld", index);
+    LOG_DEBUG("PUT request for allocation ix=%lld", (uint64_t) index);
     vgc_Allocation *alloc = vgc_allocation_new(ptr, size, dtor);
     vgc_Allocation *cur = am->allocs[index];
     vgc_Allocation *prev = NULL;
@@ -268,7 +279,7 @@ static vgc_Allocation * vgc_allocation_map_put(vgc_AllocationMap * am,
                 prev->next = alloc;
             }
             vgc_allocation_delete(cur);
-            LOG_DEBUG("AllocationMap Upsert at ix=%lld", index);
+            LOG_DEBUG("AllocationMap Upsert at ix=%lld", (uint64_t) index);
             return alloc;
 
         }
@@ -280,7 +291,7 @@ static vgc_Allocation * vgc_allocation_map_put(vgc_AllocationMap * am,
     alloc->next = cur;
     am->allocs[index] = alloc;
     am->size++;
-    LOG_DEBUG("AllocationMap insert at ix=%lld", index);
+    LOG_DEBUG("AllocationMap insert at ix=%lld", (uint64_t) index);
     void *p = alloc->ptr;
     if (vgc_allocation_map_resize_to_fit(am)) {
         alloc = vgc_allocation_map_get(am, p);
@@ -333,7 +344,7 @@ static void * vgc_allocate(vgc_GC *gc, size_t count, size_t size, vgc_Deconstruc
     /* Allocation logic that generalizes over malloc/calloc. */
 
     /* Check if we reached the high-water mark and need to clean up */
-    if (vgc_needs_sweep(gc) && !gc->paused) {
+    if (vgc_needs_sweep(gc) && !gc->disabled) {
         size_t freed_mem = vgc_collect(gc);
         LOG_DEBUG("Garbage collection cleaned up %llu bytes.", freed_mem);
     }
@@ -341,7 +352,7 @@ static void * vgc_allocate(vgc_GC *gc, size_t count, size_t size, vgc_Deconstruc
     void *ptr = vgc_mcalloc(count, size);
     size_t alloc_size = count ? count * size : size;
     /* If allocation fails, force an out-of-policy run to free some memory and try again. */
-    if (!ptr && !gc->paused && (errno == EAGAIN || errno == ENOMEM)) {
+    if (!ptr && !gc->disabled && (errno == EAGAIN || errno == ENOMEM)) {
         vgc_collect(gc);
         ptr = vgc_mcalloc(count, size);
     }
@@ -470,19 +481,7 @@ void * vgc_realloc(vgc_GC *gc, void *p, size_t size) {
     } else {
         // successful reallocation w/ copy
         vgc_Deconstructor dtor = alloc->dtor;
-#ifdef __clang__
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wuse-after-free"
-#elif __GNUC__
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wuse-after-free"
-#endif
         vgc_allocation_map_remove(gc->allocs, p, true);
-#if __clang__
-#pragma clang diagnostic pop
-#elif __GNUC__
-#pragma GCC diagnostic pop
-#endif
         vgc_allocation_map_put(gc->allocs, q, size, dtor);
     }
     return q;
@@ -515,21 +514,21 @@ void vgc_start_ext(vgc_GC *gc,
     double downsize_limit = downsize_load_factor > 0.0 ? downsize_load_factor : 0.2;
     double upsize_limit = upsize_load_factor > 0.0 ? upsize_load_factor : 0.8;
     sweep_factor = sweep_factor > 0.0 ? sweep_factor : 0.5;
-    gc->paused = false;
+    gc->disabled = false;
     gc->stack_bp = stack_bp;
     initial_capacity = initial_capacity < min_capacity ? min_capacity : initial_capacity;
     gc->allocs = vgc_allocation_map_new(min_capacity, initial_capacity,
                                        sweep_factor, downsize_limit, upsize_limit);
-    LOG_DEBUG("Created new garbage collector (cap=%lld, siz=%lld).", gc->allocs->capacity,
-              gc->allocs->size);
+    LOG_DEBUG("Created new garbage collector (cap=%lld, siz=%lld).", (uint64_t)(gc->allocs->capacity),
+              (uint64_t)(gc->allocs->size));
 }
 
 void vgc_disable(vgc_GC *gc) {
-    gc->paused = true;
+    gc->disabled = true;
 }
 
 void vgc_enable(vgc_GC *gc) {
-    gc->paused = false;
+    gc->disabled = false;
 }
 
 void vgc_mark_alloc(vgc_GC *gc, void *ptr) {
@@ -551,12 +550,12 @@ void vgc_mark_alloc(vgc_GC *gc, void *ptr) {
 }
 
 void vgc_mark_stack(vgc_GC *gc) {
-    LOG_DEBUG("Marking the stack (gc@%p) in increments of %lld", (void *) gc, sizeof(char));
-    void *tos = __builtin_frame_address(0);
+    LOG_DEBUG("Marking the stack (gc@%p) in increments of %lld", (void *) gc, (uint64_t)(sizeof(char)));
+    void *stack_sp = __builtin_frame_address(0);
     void *stack_bp = gc->stack_bp;
-    /* The stack grows towards smaller memory addresses, hence we scan tos->stack_bp.
-     * Stop scanning once the distance between tos & stack_bp is too small to hold a valid pointer */
-    for (char *p = (char*) tos; p <= (char*) stack_bp - VGC_PTRSIZE; ++p) {
+    /* The stack grows towards smaller memory addresses, hence we scan stack_sp->stack_bp.
+     * Stop scanning once the distance between stack_sp & stack_bp is too small to hold a valid pointer */
+    for (char *p = (char*) stack_sp; p <= (char*) stack_bp - VGC_PTRSIZE; ++p) {
         vgc_mark_alloc(gc, *(void **)p);
     }
 }

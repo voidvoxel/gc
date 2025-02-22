@@ -1,3 +1,9 @@
+# Build files
+build/
+
+# Distributable files
+dist/
+
 # Prerequisites
 *.d
 

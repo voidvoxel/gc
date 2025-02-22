@@ -37,19 +37,19 @@ but we're safe to ignore those for the scope of `gc`.
 ## Scanning the stack
 
 Scanning the stack starts by determining the stack boundaries. The
-*bottom-of-stack* pointer, named `bos` refers to the *address of the
+*bottom-of-stack* pointer, named `stack_bp` refers to the *address of the
 lowest stack frame on the stack* (i.e. the highest address in memory). The
 *top-of-stack* pointer referes to the highest stack frame on the stack, i.e.
 the *lowest* address on the stack.
-In other words, we expect `tos` < `bos`.
+In other words, we expect `stack_sp` < `stack_bp`.
 
 ```c
 void vgc_mark_stack(GarbageCollector* gc)
 {
     char dummy;
-    void *tos = (void*) &dummy;
-    void *bos = gc->bos;
-    for (char* p = (char*) tos; p <= (char*) bos - VGC_PTRSIZE; ++p) {
+    void *stack_sp = (void*) &dummy;
+    void *stack_bp = gc->stack_bp;
+    for (char* p = (char*) stack_sp; p <= (char*) stack_bp - VGC_PTRSIZE; ++p) {
         vgc_mark_alloc(gc, *(void**)p);
     }
 }
@@ -58,13 +58,13 @@ void vgc_mark_stack(GarbageCollector* gc)
 The code here is straightforward:
 
 1. Declare a local variable `dummy` on the stack such that we can use
-   its address as top-of -stack, ie. `tos = &dummy`.
+   its address as top-of -stack, ie. `stack_sp = &dummy`.
 2. Get the bottom-of-stack from the `gc` instance.
-3. Iterate over all memory locations between `tos` and `bos` and check
+3. Iterate over all memory locations between `stack_sp` and `stack_bp` and check
    if they contain references to known memory locations (`gc_mark_alloc()`
    queries the allocation map and recursively marks the allocations if the
    pointed-to memory allocations are a known key in the allocation map).
-   We do not iterate all the way to `bos` since the last `VGC_PTRSIZE-1` bytes
+   We do not iterate all the way to `stack_bp` since the last `VGC_PTRSIZE-1` bytes
    are too short to hold valid pointer addresses.
 
 That leaves two questions: why are we iterating using a `char*` and
@@ -79,7 +79,7 @@ not having to deal with stack alignment across different platforms and/or
 compilers.
 
 An obvious optimization would be to assume proper stack alignment of pointers
-and, starting from `tos`, work out way forward in 4- (for 32 bit systems) or
+and, starting from `stack_sp`, work out way forward in 4- (for 32 bit systems) or
 8-byte (for 64 bit systems) steps instead of the 1-byte steps afforded by
 `char*`.
 

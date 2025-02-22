@@ -143,7 +143,7 @@ The bottom-of-stack parameter `stack_bp` needs to point to a stack-allocated
 variable and marks the low end of the stack from where [root
 finding](#root-finding) (scanning) starts.
 
-Garbage collection can be stopped, paused and resumed with
+Garbage collection can be stopped, disabled and resumed with
 
 ```c
 void vgc_stop(vgc_GC* gc);
@@ -154,7 +154,7 @@ void vgc_resume(vgc_GC* gc);
 and manual garbage collection can be triggered with
 
 ```c
-size_t vgc_run(vgc_GC* gc);
+size_t vgc_collect(vgc_GC* gc);
 ```
 
 ### Memory allocation and deallocation
@@ -210,7 +210,7 @@ void vgc_free(vgc_GC* gc, void* ptr);
 Calling `vgc_free()` is guaranteed to (a) finalize/destruct on the object
 pointed to by `ptr` if applicable and (b) to free the memory that `ptr` points to
 irrespective of the current scheduling for garbage collection and will also
-work if GC has been paused using `vgc_pause()` above.
+work if GC has been disabled using `vgc_pause()` above.
 
 
 ### Helper functions
@@ -286,7 +286,7 @@ struct which is part of the public API:
 ```c
 typedef struct vgc_GC {
     struct AllocationMap* allocs;
-    bool paused;
+    bool disabled;
     void *stack_bp;
     size_t min_size;
 } vgc_GC;
@@ -314,7 +314,7 @@ map passes a dynamically adjusted high water mark.
 
 If either of these cases occurs, `gc` stops the world and starts a
 mark-and-sweep garbage collection run over all current allocations. This
-functionality is implemented in the `vgc_run()` function which is part of the
+functionality is implemented in the `vgc_collect()` function which is part of the
 public API and delegates all work to the `vgc_mark()` and `vgc_sweep()` functions
 that are part of the private API.
 
@@ -322,7 +322,7 @@ that are part of the private API.
 known allocations that are referenced from a root (or from an allocation that
 is referenced from a root, i.e. transitively) as "used". Once the marking of
 is completed, `vgc_sweep()` iterates over all known allocations and
-deallocates all unused (i.e. unmarked) allocations, returns to `vgc_run()` and
+deallocates all unused (i.e. unmarked) allocations, returns to `vgc_collect()` and
 the world continues to run.
 
 

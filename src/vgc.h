@@ -51,7 +51,7 @@ typedef struct vgc_GC {
     struct vgc_AllocationMap *allocs;
 
     /// @brief Toggling this variable will (temporarily) switch gc on/off.
-    bool paused;
+    bool disabled;
 
     /// @brief A pointer to the bottom of managed stack.
     void *stack_bp;
@@ -85,10 +85,10 @@ typedef struct vgc_Array {
 extern vgc_GC *VGC_GLOBAL_GC;
 
 /// @brief The C standard library function `free`.
-void (__cdecl *vgc__libc_free)(void *block) = free;
+void (*vgc__libc_free)(void *block) = free;
 
 /// @brief The C standard library function `malloc`.
-void * (__cdecl *vgc__libc_malloc)(size_t size) = malloc;
+void * (*vgc__libc_malloc)(size_t size) = malloc;
 
 /// @brief Run the garbage collector, freeing up any unreachable memory resources that are no longer being used.
 /// @return The amount of memory freed (in bytes).

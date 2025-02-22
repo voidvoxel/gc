@@ -34,10 +34,10 @@ void do_something()
     ((int *) some_data)[0] = 10;
     ((int *) some_data)[1] = 42;
 
-    printf("%i\n", ((int *) some_data)[0]);
-    printf("%i\n", ((int *) some_data)[1]);
-
-    exit(0);
+    // DEBUG: Uncomment the following lines to print.
+    // printf("%i\n", ((int *) some_data)[0]);
+    // printf("%i\n", ((int *) some_data)[1]);
+    // exit(0);
 
     vgc_Array *input = vgcx_create_array(float, 2);
     vgc_Array *hidden = vgcx_create_array(float, 3);

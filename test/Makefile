@@ -12,7 +12,7 @@ $(BUILD_DIR)/test/%.o: %.c
 	mkdir -p $(@D)
 	$(CC) $(CFLAGS) -MMD -c $< -o $@
 
-SRCS=test_gc.c ../src/log.c
+SRCS=test_gc.c
 OBJS=$(SRCS:%.c=$(BUILD_DIR)/test/%.o)
 DEPS=$(OBJS:%.o=%.d)
 
@@ -37,4 +37,3 @@ distclean: clean
 	$(RM) -f $(BUILD_DIR)/test/test_gc
 	$(RM) -f $(BUILD_DIR)/test/*gcda
 	$(RM) -f $(BUILD_DIR)/test/*gcno
-
