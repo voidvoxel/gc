@@ -20,10 +20,11 @@ in C, entirely from scratch - and that also required garbage collection.
 
 ### Acknowledgements
 
-This work would not have been possible without the ability to read the work of
-others, most notably the [Boehm GC][boehm], orangeduck's [tgc][tgc] (which also
-follows the ideals of being tiny and simple), [The Garbage Collection Handbook]
-[garbage_collection_handbook], [mkirchner](https://github.com/mkirchner), and
+This work would not have been possible without the ability to read the work of others,
+most notably the [Boehm GC](https://www.hboehm.info/gc/),
+orangeduck's [tgc](https://github.com/orangeduck/tgc) *(which also follows the ideals of being tiny and simple)*,
+[The Garbage Collection Handbook](https://amzn.to/2VdEvjC),
+[mkirchner](https://github.com/mkirchner), and
 [the many other contributors who worked on the original `gc`](https://github.com/mkirchner/gc/graphs/contributors).
 
 
@@ -71,7 +72,7 @@ To compile using the `clang` compiler:
 
     $ make test
 
-To use the GNU Compiler Collection (GCC):
+To use the GNU Compiler Collection *(GCC)*:
 
     $ make test CC=gcc
 
@@ -143,7 +144,7 @@ void vgc_start(vgc_GC* gc, void* stack_bp);
 
 The bottom-of-stack parameter `stack_bp` needs to point to a stack-allocated
 variable and marks the low end of the stack from where [root
-finding](#root-finding) (scanning) starts.
+finding](#root-finding) *(scanning)* starts.
 
 Garbage collection can be stopped, disabled and resumed with
 
@@ -162,9 +163,9 @@ size_t vgc_collect(vgc_GC* gc);
 ### Memory allocation and deallocation
 
 `vgc` supports `malloc()`, `calloc()`and `realloc()`-style memory allocation.
-The respective function signatures mimick the POSIX functions (with the
+The respective function signatures mimick the POSIX functions *(with the
 exception that we need to pass the garbage collector along as the first
-argument):
+argument)*:
 
 ```c
 void* vgc_malloc(vgc_GC* gc, size_t size);
@@ -209,8 +210,8 @@ It is also possible to trigger explicit memory deallocation using
 void vgc_free(vgc_GC* gc, void* ptr);
 ```
 
-Calling `vgc_free()` is guaranteed to (a) finalize/destruct on the object
-pointed to by `ptr` if applicable and (b) to free the memory that `ptr` points to
+Calling `vgc_free()` is guaranteed to *(a)* finalize/destruct on the object
+pointed to by `ptr` if applicable and *(b)* to free the memory that `ptr` points to
 irrespective of the current scheduling for garbage collection and will also
 work if GC has been disabled using `vgc_pause()` above.
 
@@ -233,7 +234,7 @@ allocated memory and periodically triggering deallocation for memory that is
 still allocated but [unreachable](#reachability).
 
 Many advanced garbage collectors also implement their own approach to memory
-allocation (i.e. replace `malloc()`). This often enables them to layout memory
+allocation *(i.e. replace `malloc()`)*. This often enables them to layout memory
 in a more space-efficient manner or for faster access but comes at the price of
 architecture-specific implementations and increased complexity. `vgc` sidesteps
 these issues by falling back on the POSIX `*alloc()` implementations and keeping
@@ -295,8 +296,8 @@ typedef struct vgc_GC {
 ```
 
 With the basic data structures in place, any `vgc_*alloc()` memory allocation
-request is a two-step procedure: first, allocate the memory through system (i.e.
-standard `malloc()`) functionality and second, add or update the associated
+request is a two-step procedure: first, allocate the memory through system *(i.e.
+standard `malloc()`)* functionality and second, add or update the associated
 metadata to the hash map.
 
 For `vgc_free()`, use the pointer to locate the metadata in the hash map,
@@ -309,9 +310,9 @@ management of the metadata required to build a garbage collector.
 
 ### Garbage collection
 
-`vgc` triggers collection under two circumstances: (a) when any of the calls to
+`vgc` triggers collection under two circumstances: *(a)* when any of the calls to
 the system allocation fail (in the hope to deallocate sufficient memory to
-fulfill the current request); and (b) when the number of entries in the hash
+fulfill the current request); and *(b)* when the number of entries in the hash
 map passes a dynamically adjusted high water mark.
 
 If either of these cases occurs, `vgc` stops the world and starts a
@@ -321,10 +322,10 @@ public API and delegates all work to the `vgc_mark()` and `vgc_sweep()` function
 that are part of the private API.
 
 `vgc_mark()` has the task of [finding roots](#finding-roots) and tagging all
-known allocations that are referenced from a root (or from an allocation that
-is referenced from a root, i.e. transitively) as "used". Once the marking of
+known allocations that are referenced from a root *(or from an allocation that
+is referenced from a root, i.e. transitively)* as "used". Once the marking of
 is completed, `vgc_sweep()` iterates over all known allocations and
-deallocates all unused (i.e. unmarked) allocations, returns to `vgc_collect()` and
+deallocates all unused *(i.e. unmarked)* allocations, returns to `vgc_collect()` and
 the world continues to run.
 
 
@@ -357,15 +358,15 @@ allocations and find explicit roots with the `VGC_TAG_ROOT` tag set.
 Each of these roots is a starting point for [depth-first recursive
 marking](#depth-first-recursive-marking).
 
-`vgc` subsequently detects all roots in the stack (starting from the bottom-of-stack
-pointer `stack_bp` that is passed to `vgc_start()`) and the registers (by [dumping them
+`vgc` subsequently detects all roots in the stack *(starting from the bottom-of-stack
+pointer `stack_bp` that is passed to `vgc_start()`)* and the registers (by [dumping them
 on the stack](#dumping-registers-on-the-stack) prior to the mark phase) and
 uses these as starting points for marking as well.
 
 ### Depth-first recursive marking
 
-Given a root allocation, marking consists of (1) setting the `tag` field in an
-`Allocation` object to `VGC_TAG_MARK` and (2) scanning the allocated memory for
+Given a root allocation, marking consists of *(1)* setting the `tag` field in an
+`Allocation` object to `VGC_TAG_MARK` and *(2)* scanning the allocated memory for
 pointers to known allocations, recursively repeating the process.
 
 The underlying implementation is a simple, recursive depth-first search that
@@ -450,9 +451,9 @@ size_t vgc_sweep(vgc_GC* gc)
 }
 ```
 
-We iterate over all allocations in the hash map (the `for` loop), following every
-chain (the `while` loop with the `chunk = chunk->next` update) and either (1)
-unmark the chunk if it was marked; or (2) call the destructor on the chunk and
+We iterate over all allocations in the hash map *(the `for` loop)*, following every
+chain *(the `while` loop with the `chunk = chunk->next` update)* and either *(1)*
+unmark the chunk if it was marked; or *(2)* call the destructor on the chunk and
 free the memory if it was not marked, keeping a running total of the amount of
 memory we free.
 
@@ -460,7 +461,7 @@ That concludes the mark & sweep run. The stopped world is resumed and we're
 ready for the next run!
 
 
-
+[valiant]: https://github.com/valiant-lang
 [naive_mas]: https://en.wikipedia.org/wiki/Tracing_garbage_collection#Naïve_mark-and-sweep
 [boehm]: https://www.hboehm.info/gc/
 [stutter]: https://github.com/mkirchner/stutter
