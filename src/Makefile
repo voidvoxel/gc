@@ -1,0 +1,44 @@
+CC=clang
+CFLAGS=-g -Wall -Wextra -pedantic -I../include -fPIC -fprofile-arcs -ftest-coverage
+LDFLAGS=-g -L../build/src -L../build/test --coverage -fPIC
+LDLIBS=
+RM=rm
+BUILD_DIR=../build
+DIST_DIR=../dist
+
+PROJECT_NAME=vgc
+
+LIB_NAME=lib$(PROJECT_NAME)
+STATIC_LIBRARY=$(LIB_NAME).a
+DYNAMIC_LIBRARY=$(LIB_NAME).so
+
+STATIC_LIBRARY_PATH=$(DIST_DIR)/lib/vgc.a
+DYNAMIC_LIBRARY_PATH=$(DIST_DIR)/lib/vgc.so
+
+.PHONY: all
+all: clean $(STATIC_LIBRARY_PATH) $(DYNAMIC_LIBRARY_PATH)
+
+$(BUILD_DIR)/obj/%.o: %.c
+	mkdir -p $(@D)
+	$(CC) $(CFLAGS) -MMD -c $< -o $@
+
+SRCS=vgc.c
+OBJS=$(SRCS:%.c=$(BUILD_DIR)/obj/%.o)
+DEPS=$(OBJS:%.o=%.d)
+
+$(STATIC_LIBRARY_PATH): $(OBJS)
+	mkdir -p $(@D)
+	ar rcs $@ $^
+
+$(DYNAMIC_LIBRARY_PATH): $(OBJS)
+	mkdir -p $(@D)
+	$(CC) $(LDFLAGS) $(LDLIBS) -shared -fPIC $^ -o $@
+
+clean:
+	$(RM) -f $(OBJS) $(DEPS)
+
+distclean: clean
+	$(RM) -f $(DIST_DIR)/lib/$(STATIC_LIBRARY)
+	$(RM) -f $(DIST_DIR)/lib/$(DYNAMIC_LIBRARY)
+	$(RM) -f $(DIST_DIR)/lib/*gcda
+	$(RM) -f $(DIST_DIR)/lib/*gcno
