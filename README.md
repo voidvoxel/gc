@@ -118,11 +118,11 @@ void do_lots_of_things()
 }
 
 int main(int argc, char **argv) {
-    vgcx_begin();
+    vgcx_start();
 
     do_lots_of_things();
 
-    vgcx_end();
+    vgcx_stop();
 }
 ```
 
