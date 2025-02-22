@@ -84,11 +84,15 @@ typedef struct vgc_Array {
 /// @brief A global instance of the garbage collector for use by single-threaded applications.
 extern vgc_GC *VGC_GLOBAL_GC;
 
+#if !defined(vgc__libc_free)
 /// @brief The C standard library function `free`.
 void (*vgc__libc_free)(void *block) = free;
+#endif
 
+#if !defined(vgc__libc_malloc)
 /// @brief The C standard library function `malloc`.
 void * (*vgc__libc_malloc)(size_t size) = malloc;
+#endif
 
 /// @brief Run the garbage collector, freeing up any unreachable memory resources that are no longer being used.
 /// @return The amount of memory freed (in bytes).
