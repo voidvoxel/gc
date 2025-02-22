@@ -26,3 +26,9 @@ clean:
 
 distclean: clean
 	$(MAKE) -C test distclean
+
+install:
+	$(MAKE) -C src install
+
+uninstall:
+	$(MAKE) -C src uninstall
