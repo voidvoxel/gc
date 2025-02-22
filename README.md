@@ -13,7 +13,7 @@ optimization (see e.g. the [Boehm GC][boehm] for such an undertaking). It
 should be particularly suitable for learning purposes and is open for all kinds
 of optimization (PRs welcome!).
 
-The original motivation for `gc` *(the parent fork)* was the original author's desire to write [their own LISP implementation in C][https://github.com/mkirchner/stutter], entirely from scratch - and that required garbage collection.
+The original motivation for `gc` *(the parent fork)* was the original author's desire to write [their own LISP implementation in C](https://github.com/mkirchner/stutter), entirely from scratch - and that required garbage collection.
 
 Ironically enough, my original motivation for `vgc` *(this fork)* is my desire to write [my own programming language][valiant]
 in C, entirely from scratch - and that also required garbage collection.
